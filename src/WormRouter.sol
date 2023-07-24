@@ -14,6 +14,8 @@ contract WormRouter is IWormholeReceiver {
         wormholeRelayer = IWormholeRelayer(_wormholeRelayer);
     }
 
+    enum Version {ARBITRARY_CALL_DATA, ONE_VAA}
+
     function receiveWormholeMessages(
         bytes memory payload,
         bytes[] memory additionalVaas,
@@ -24,13 +26,15 @@ contract WormRouter is IWormholeReceiver {
         require(msg.sender == address(wormholeRelayer), "Only relayer allowed");
         address targetAddress;
         bool success = false;
-        if(additionalVaas.length == 0) {
+
+        Version version = abi.decode(payload, (Version));
+        if(version == Version.ARBITRARY_CALL_DATA) {
             bytes memory data;
-            (targetAddress, data) = abi.decode(payload, (address, bytes));
+            (,targetAddress, data) = abi.decode(payload, (Version, address, bytes));
             (success,) = targetAddress.call{value: msg.value}(data);
-        } else if(additionalVaas.length == 1) {
+        } else if(version == Version.ONE_VAA) {
             bytes4 selector;
-            (selector, targetAddress) = abi.decode(payload, (bytes4, address));
+            (,selector, targetAddress) = abi.decode(payload, (Version, bytes4, address));
             (success,) = targetAddress.call{value: msg.value}(abi.encodeWithSelector(selector, additionalVaas[0]));
         }
 

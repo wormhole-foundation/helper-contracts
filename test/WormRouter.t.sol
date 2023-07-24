@@ -40,7 +40,7 @@ contract WormRouterTest is WormholeRelayerBasicTest {
         relayerSource.sendVaasToEvm{value: value}(
             targetChain, 
             address(wormRouter), 
-            abi.encode(ITokenBridge.completeTransfer.selector, address(tokenBridgeTarget)),
+            abi.encode(uint8(1), ITokenBridge.completeTransfer.selector, address(tokenBridgeTarget)),
             0,
             GAS_LIMIT,
             vaaKeys
