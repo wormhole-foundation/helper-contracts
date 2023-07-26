@@ -1,0 +1,31 @@
+{
+  "name": "wormhole-ecosystem-helper-contracts",
+  "version": "1.0.0",
+  "description": "A set of contracts & typescript tooling to aid in accomplishing common tasks in the Wormhole ecosystem",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "dependencies": {
+    "@certusone/wormhole-sdk": "^0.9.22",
+    "ethers": "^6.6.5",
+    "prettier": "^3.0.0",
+    "ts-node": "^10.9.1",
+    "typechain": "^8.3.1",
+    "typescript": "^5.1.6"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wormhole-foundation/helper-contracts.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/wormhole-foundation/helper-contracts/issues"
+  },
+  "homepage": "https://github.com/wormhole-foundation/helper-contracts#readme"
+}
