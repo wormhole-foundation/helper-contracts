@@ -9,41 +9,80 @@ import "wormhole-solidity-sdk/WormholeRelayerSDK.sol";
 contract WormRouterTest is WormholeRelayerBasicTest {
     event GreetingReceived(string greeting, uint16 senderChain, address sender);
 
-    WormRouter wormRouter;
+    WormRouter wormRouterSource;
+    WormRouter wormRouterTarget;
     ERC20Mock public token;
     uint256 constant GAS_LIMIT = 150_000;
 
     function setUpSource() public override {
         token = createAndAttestToken(sourceChain);
+        wormRouterSource = new WormRouter(address(relayerSource), address(wormholeSource));
     }
 
     function setUpTarget() public override {
-        wormRouter = new WormRouter(address(relayerTarget));
+        wormRouterTarget = new WormRouter(address(relayerTarget), address(wormholeTarget));
     }
 
-    function testTransferTokens() public {
+    function setUpGeneral() public override {
+        vm.selectFork(sourceFork);
+        wormRouterSource.setRegisteredSender(targetChain, toWormholeFormat(address(wormRouterTarget)));
+        vm.selectFork(targetFork);
+        wormRouterTarget.setRegisteredSender(sourceChain, toWormholeFormat(address(wormRouterSource)));
+    }
+
+    function testTransferTokensUsingPerformActionAndCallMultipleEvms() public {
         uint256 amount = 19e17;
         address recipient = 0x1234567890123456789012345678901234567890;
 
-        token.approve(address(tokenBridgeSource), amount);
-        uint64 sequence = tokenBridgeSource.transferTokens(address(token), amount, targetChain, toWormholeFormat(recipient), 0, 0);
+        token.approve(address(wormRouterSource), amount);
 
-        VaaKey[] memory vaaKeys = new VaaKey[](1);
-        vaaKeys[0] = VaaKey({
-            chainId: sourceChain,
-            sequence: sequence,
-            emitterAddress: toWormholeFormat(address(tokenBridgeSource))
+        WormRouter.CallEvmWithVAA memory call = WormRouter.CallEvmWithVAA({
+            targetChain: targetChain,
+            targetAddress: address(tokenBridgeTarget),
+            selector: ITokenBridge.completeTransfer.selector,
+            gasLimit: GAS_LIMIT,
+            receiverValue: 0
         });
+
+        WormRouter.CallEvmWithVAA[] memory calls = new WormRouter.CallEvmWithVAA[](1);
+        calls[0] = call;
+
+        WormRouter.PerformAction memory sendTokenToWormRouter = WormRouter.PerformAction({
+            actionAddress: address(token),
+            actionCallData: abi.encodeCall(
+                IERC20.transferFrom, (address(this), address(wormRouterSource), amount)
+            ),
+            actionMsgValue: 0
+        });
+
+        WormRouter.PerformAction memory approveTokenFromWormRouterToTokenBridge = WormRouter.PerformAction({
+            actionAddress: address(token),
+            actionCallData: abi.encodeCall(
+                IERC20.approve, (address(tokenBridgeSource),amount)
+            ),
+            actionMsgValue: 0
+        });
+
+        WormRouter.PerformAction memory sendTokenToTargetChain = WormRouter.PerformAction({
+            actionAddress: address(tokenBridgeSource),
+            actionCallData: abi.encodeCall(
+                ITokenBridge.transferTokens, (address(token), amount, targetChain, toWormholeFormat(recipient), 0, 0)
+            ),
+            actionMsgValue: 0
+        });
+
+        WormRouter.PerformAction[] memory actions = new WormRouter.PerformAction[](3);
+        actions[0] = sendTokenToWormRouter;
+        actions[1] = approveTokenFromWormRouterToTokenBridge;
+        actions[2] = sendTokenToTargetChain;
 
         (uint256 value,) = relayerSource.quoteEVMDeliveryPrice(targetChain, 0, GAS_LIMIT);
 
-        relayerSource.sendVaasToEvm{value: value}(
-            targetChain, 
-            address(wormRouter), 
-            abi.encode(uint8(1), ITokenBridge.completeTransfer.selector, address(tokenBridgeTarget)),
-            0,
-            GAS_LIMIT,
-            vaaKeys
+        wormRouterSource.performActionsAndCallMultipleEvms{value: value}(
+            actions,
+            address(tokenBridgeSource),
+            2,
+            calls
         );
 
         performDelivery();
