@@ -16,18 +16,11 @@ contract WormRouterTest is WormholeRelayerBasicTest {
 
     function setUpSource() public override {
         token = createAndAttestToken(sourceChain);
-        wormRouterSource = new WormRouter(address(relayerSource), address(wormholeSource));
+        wormRouterSource = new WormRouter(address(relayerSource), sourceChain);
     }
 
     function setUpTarget() public override {
-        wormRouterTarget = new WormRouter(address(relayerTarget), address(wormholeTarget));
-    }
-
-    function setUpGeneral() public override {
-        vm.selectFork(sourceFork);
-        wormRouterSource.setRegisteredSender(targetChain, toWormholeFormat(address(wormRouterTarget)));
-        vm.selectFork(targetFork);
-        wormRouterTarget.setRegisteredSender(sourceChain, toWormholeFormat(address(wormRouterSource)));
+        wormRouterTarget = new WormRouter(address(relayerTarget), targetChain);
     }
 
     function testTransferTokensUsingPerformActionAndCallMultipleEvms() public {
@@ -41,7 +34,8 @@ contract WormRouterTest is WormholeRelayerBasicTest {
             targetAddress: address(tokenBridgeTarget),
             selector: ITokenBridge.completeTransfer.selector,
             gasLimit: GAS_LIMIT,
-            receiverValue: 0
+            receiverValue: 0,
+            wormRouterAddress: address(wormRouterTarget)
         });
 
         WormRouter.CallEvmWithVAA[] memory calls = new WormRouter.CallEvmWithVAA[](1);
