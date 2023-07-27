@@ -24,8 +24,4 @@ struct TargetChainActions {
 }
 
 //TODO consider converting to pure library
-contract Serde {
-
-
-
-}
+contract Serde {}

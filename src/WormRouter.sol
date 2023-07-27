@@ -6,16 +6,30 @@ import "wormhole-solidity-sdk/interfaces/IWormholeReceiver.sol";
 import "wormhole-solidity-sdk/interfaces/IWormhole.sol";
 import "wormhole-solidity-sdk/Utils.sol";
 
-contract WormRouter is IWormholeReceiver {
+struct CallEvmWithVAA {
+    uint16 targetChain;
+    address targetAddress;
+    bytes4 selector;
+    uint256 gasLimit;
+    uint256 receiverValue;
+    address wormRouterAddress;
+}
 
+struct PerformAction {
+    address actionAddress;
+    bytes actionCallData;
+    uint256 actionMsgValue;
+}
+
+enum Version {
+    ARBITRARY_CALL_DATA,
+    ONE_VAA
+}
+
+contract WormRouter is IWormholeReceiver {
     event CrossChainAction(
         uint16 sourceChain, bytes32 sourceAddress, address targetAddress, bool success, bytes returnData
     );
-
-    enum Version {
-        ARBITRARY_CALL_DATA,
-        ONE_VAA
-    }
 
     IWormholeRelayer public immutable wormholeRelayer;
     uint16 public immutable chainId;
@@ -45,7 +59,6 @@ contract WormRouter is IWormholeReceiver {
         uint16 sourceChain,
         bytes32 // deliveryHash - this can be stored in a mapping deliveryHash => bool to prevent duplicate deliveries
     ) public payable override {
-
         require(msg.sender == address(wormholeRelayer));
 
         address targetAddress;
@@ -113,43 +126,35 @@ contract WormRouter is IWormholeReceiver {
         );
     }
 
-    struct CallEvmWithVAA {
-        uint16 targetChain;
-        address targetAddress;
-        bytes4 selector;
-        uint256 gasLimit;
-        uint256 receiverValue;
-        address wormRouterAddress;
-    }
-
     function callMultipleEvmsWithVAA(CallEvmWithVAA[] memory calls, VaaKey memory vaaKey) public payable {
         uint256 length = calls.length;
         for (uint256 i = 0; i < length; i++) {
             CallEvmWithVAA memory call = calls[i];
             callEvmWithVAA(
-                call.targetChain, call.targetAddress, call.selector, vaaKey, call.gasLimit, call.receiverValue, call.wormRouterAddress
+                call.targetChain,
+                call.targetAddress,
+                call.selector,
+                vaaKey,
+                call.gasLimit,
+                call.receiverValue,
+                call.wormRouterAddress
             );
         }
     }
 
-    struct PerformAction {
-        address actionAddress;
-        bytes actionCallData;
-        uint256 actionMsgValue;
-    }
-
     function performActionsAndCallMultipleEvms(
         PerformAction[] memory actions,
-        address vaaEmitter, 
+        address vaaEmitter,
         uint256 index, // action[index] should return a sequence number (uint64) corresponding to an emitted VAA from emitter address 'vaaEmitter'
         CallEvmWithVAA[] memory calls
     ) public payable {
         VaaKey memory vaaKey;
-        for(uint256 i=0; i<actions.length; i++) {
+        for (uint256 i = 0; i < actions.length; i++) {
             PerformAction memory action = actions[i];
-            (bool success, bytes memory returnData) = action.actionAddress.call{value: action.actionMsgValue}(action.actionCallData);
+            (bool success, bytes memory returnData) =
+                action.actionAddress.call{value: action.actionMsgValue}(action.actionCallData);
 
-            if(i == index) {
+            if (i == index) {
                 // Assume that returnData is one 'sequence number'
                 require(success, "Call to Wormhole Integration contact failed");
                 (uint64 sequence) = abi.decode(returnData, (uint64));
