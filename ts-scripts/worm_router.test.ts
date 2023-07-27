@@ -17,6 +17,8 @@ import {
   CHAINS,
   tryNativeToHexString,
   tryNativeToUint8Array,
+  transferFromEth,
+  parseSequenceFromLogEth,
 } from "@certusone/wormhole-sdk";
 
 import {
@@ -28,11 +30,8 @@ import {
 
 import { IERC20Interface } from "./ethers-contracts/IERC20";
 
-import {
-  CallEvmWithVAAStruct,
-  PerformActionStruct,
-} from "./ethers-contracts/WormRouter";
 import { ITokenBridge__factory } from "@certusone/wormhole-sdk/lib/cjs/ethers-contracts";
+import { IWormholeRelayer__factory } from "@certusone/wormhole-sdk/lib/cjs/ethers-contracts/factories/IWormholeRelayerTyped.sol";
 
 const sourceChain = 6;
 const targetChain = 14;
@@ -71,56 +70,21 @@ async function transferToken(
 
   const environment: Network = optionalParams?.environment || "TESTNET";
 
-  const callEvmWithVaa: CallEvmWithVAAStruct = {
-    targetChain: CHAINS[targetChain],
-    targetAddress: CONTRACTS[environment][targetChain].token_bridge || "",
-    selector:
-      ITokenBridge__factory.createInterface().getSighash("completeTransfer"),
-    gasLimit: GAS_LIMIT,
-    receiverValue: 0,
-    wormRouterAddress: getWormRouter(CHAINS[targetChain]).address,
-  };
+  const receipt = await transferFromEth(
+    CONTRACTS[environment][sourceChain].token_bridge || "",
+    getWallet(CHAINS[sourceChain]),
+    token,
+    amount,
+    CHAINS[targetChain],
+    tryNativeToUint8Array(recipient, sourceChain)
+  );
 
-  const tokenBridgeSource =
-    CONTRACTS[environment][sourceChain].token_bridge || "";
+  const sequence = parseSequenceFromLogEth(
+    receipt,
+    CONTRACTS[environment][sourceChain].core || ""
+  );
 
-  const sendTokenToWormRouter: PerformActionStruct = {
-    actionAddress: token,
-    actionCallData: IERC20__factory.createInterface().encodeFunctionData(
-      "transferFrom",
-      [
-        getWallet(CHAINS[sourceChain]).address,
-        getWormRouter(CHAINS[sourceChain]).address,
-        amount,
-      ]
-    ),
-    actionMsgValue: 0,
-  };
-
-  const approveTokenFromWormRouterToTokenBridge: PerformActionStruct = {
-    actionAddress: token,
-    actionCallData: IERC20__factory.createInterface().encodeFunctionData(
-      "approve",
-      [tokenBridgeSource, amount]
-    ),
-    actionMsgValue: 0,
-  };
-
-  const sendTokenToTargetChain: PerformActionStruct = {
-    actionAddress: tokenBridgeSource || "",
-    actionCallData: ITokenBridge__factory.createInterface().encodeFunctionData(
-      "transferTokens",
-      [
-        token,
-        amount,
-        CHAINS[targetChain],
-        tryNativeToUint8Array(recipient, "ethereum"),
-        0,
-        0,
-      ]
-    ),
-    actionMsgValue: 0,
-  };
+  console.log(`Sequence number of Token Bridge VAA: ${sequence}`);
 
   const price = await transferTokenCost(
     sourceChain,
@@ -128,15 +92,34 @@ async function transferToken(
     optionalParams
   );
 
-  return getWormRouter(CHAINS[sourceChain]).performActionsAndCallMultipleEvms(
+  return IWormholeRelayer__factory.connect(
+    getChain(CHAINS[sourceChain]).wormholeRelayer,
+    getWallet(CHAINS[sourceChain])
+  )[
+    "sendVaasToEvm(uint16,address,bytes,uint256,uint256,(uint16,bytes32,uint64)[])"
+  ](
+    CHAINS[targetChain],
+    getWormRouter(CHAINS[targetChain]).address,
+    ethers.utils.defaultAbiCoder.encode(
+      ["uint8", "address", "bytes4"],
+      [
+        1,
+        CONTRACTS[environment][targetChain].token_bridge,
+        ITokenBridge__factory.createInterface().getSighash("completeTransfer"),
+      ]
+    ),
+    0,
+    GAS_LIMIT,
     [
-      sendTokenToWormRouter,
-      approveTokenFromWormRouterToTokenBridge,
-      sendTokenToTargetChain,
+      {
+        chainId: CHAINS[sourceChain],
+        emitterAddress: tryNativeToUint8Array(
+          CONTRACTS[environment][sourceChain].token_bridge || "",
+          sourceChain
+        ),
+        sequence: sequence,
+      },
     ],
-    tokenBridgeSource,
-    2,
-    [callEvmWithVaa],
     { value: price }
   );
 }
@@ -190,12 +173,16 @@ describe("Worm Router Integration Tests on Testnet", () => {
         )} testnet AVAX`
       );
 
-      // Approve the WormRouter contract to use 'arbitraryTokenAmount' of our test token
+      // Approve the TokenBridge contract to use 'arbitraryTokenAmount' of our test token
       const approveTx = await testToken
-        .approve(sourceWormRouterContract.address, arbitraryTokenAmount)
+        .approve(
+          CONTRACTS["TESTNET"][CHAIN_ID_TO_NAME[sourceChain]].token_bridge ||
+            "",
+          arbitraryTokenAmount
+        )
         .then(wait);
       console.log(
-        `WormRouter contract approved to spend ${ethers.utils.formatEther(
+        `TokenBridge contract approved to spend ${ethers.utils.formatEther(
           arbitraryTokenAmount
         )} of our test token`
       );

@@ -3,23 +3,6 @@ pragma solidity ^0.8.13;
 
 import "wormhole-solidity-sdk/interfaces/IWormholeRelayer.sol";
 import "wormhole-solidity-sdk/interfaces/IWormholeReceiver.sol";
-import "wormhole-solidity-sdk/interfaces/IWormhole.sol";
-import "wormhole-solidity-sdk/Utils.sol";
-
-struct CallEvmWithVAA {
-    uint16 targetChain;
-    address targetAddress;
-    bytes4 selector;
-    uint256 gasLimit;
-    uint256 receiverValue;
-    address wormRouterAddress;
-}
-
-struct PerformAction {
-    address actionAddress;
-    bytes actionCallData;
-    uint256 actionMsgValue;
-}
 
 enum Version {
     ARBITRARY_CALL_DATA,
@@ -78,90 +61,5 @@ contract WormRouter is IWormholeReceiver {
         }
 
         emit CrossChainAction(sourceChain, sourceAddress, targetAddress, success, returnData);
-    }
-
-    /**
-     * Helpers for requesting automatic relays to either
-     *  - arbitrary endpoints with arbitrary calldata specified on source chain (callEvm)
-     *  - arbitrary endpoints with exactly one 'bytes' argument - the signed VAA (callEvmWithVAA)
-     */
-
-    function callEvm(
-        uint16 targetChain,
-        address targetAddress,
-        bytes memory arbitraryCallData,
-        uint256 gasLimit,
-        uint256 receiverValue,
-        address wormRouterAddress
-    ) public payable {
-        (uint256 value,) = wormholeRelayer.quoteEVMDeliveryPrice(targetChain, receiverValue, gasLimit);
-        wormholeRelayer.sendPayloadToEvm{value: value}(
-            targetChain,
-            wormRouterAddress,
-            abi.encode(Version.ARBITRARY_CALL_DATA, targetAddress, arbitraryCallData),
-            receiverValue,
-            gasLimit
-        );
-    }
-
-    function callEvmWithVAA(
-        uint16 targetChain,
-        address targetAddress,
-        bytes4 selector,
-        VaaKey memory vaaKey,
-        uint256 gasLimit,
-        uint256 receiverValue,
-        address wormRouterAddress
-    ) public payable {
-        (uint256 value,) = wormholeRelayer.quoteEVMDeliveryPrice(targetChain, receiverValue, gasLimit);
-        VaaKey[] memory vaaKeys = new VaaKey[](1);
-        vaaKeys[0] = vaaKey;
-        wormholeRelayer.sendVaasToEvm{value: value}(
-            targetChain,
-            wormRouterAddress,
-            abi.encode(Version.ONE_VAA, targetAddress, selector),
-            receiverValue,
-            gasLimit,
-            vaaKeys
-        );
-    }
-
-    function callMultipleEvmsWithVAA(CallEvmWithVAA[] memory calls, VaaKey memory vaaKey) public payable {
-        uint256 length = calls.length;
-        for (uint256 i = 0; i < length; i++) {
-            CallEvmWithVAA memory call = calls[i];
-            callEvmWithVAA(
-                call.targetChain,
-                call.targetAddress,
-                call.selector,
-                vaaKey,
-                call.gasLimit,
-                call.receiverValue,
-                call.wormRouterAddress
-            );
-        }
-    }
-
-    function performActionsAndCallMultipleEvms(
-        PerformAction[] memory actions,
-        address vaaEmitter,
-        uint256 index, // action[index] should return a sequence number (uint64) corresponding to an emitted VAA from emitter address 'vaaEmitter'
-        CallEvmWithVAA[] memory calls
-    ) public payable {
-        VaaKey memory vaaKey;
-        for (uint256 i = 0; i < actions.length; i++) {
-            PerformAction memory action = actions[i];
-            (bool success, bytes memory returnData) =
-                action.actionAddress.call{value: action.actionMsgValue}(action.actionCallData);
-
-            if (i == index) {
-                // Assume that returnData is one 'sequence number'
-                require(success, "Call to Wormhole Integration contact failed");
-                (uint64 sequence) = abi.decode(returnData, (uint64));
-
-                vaaKey = VaaKey({chainId: chainId, emitterAddress: toWormholeFormat(vaaEmitter), sequence: sequence});
-            }
-        }
-        callMultipleEvmsWithVAA(calls, vaaKey);
     }
 }
