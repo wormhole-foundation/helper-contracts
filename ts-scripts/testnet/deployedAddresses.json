@@ -17,7 +17,7 @@
     null,
     null,
     null,
-    "0xe9a3Df45bC5FCc909766ca8B7b68CC40d6DBbC4B",
+    "0x702715f0652808bCcf2cdeac9f752e71C21bb1B9",
     null,
     null,
     null,
@@ -25,6 +25,23 @@
     null,
     null,
     null,
-    "0xD60b0dDA2D136D04cd9715Bd810A72D8004AFa98"
+    "0xd474A9Dc46155180A06AFe5B3388ac0289a17240"
+  ],
+  "tokenBridgeHelpers": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "0x96C79ed76d9C61633FfaABF6afDd3CA9b838178F",
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    "0xbFB09e56f03FBEA3D2B14752e09D962636f040D1"
   ]
 }

@@ -6,6 +6,7 @@ import {
   getWallet,
   loadDeployedAddresses as getDeployedAddresses,
   wait,
+  getTokenBridgeHelpers,
 } from "./utils";
 
 import {
@@ -25,10 +26,9 @@ import {
   WormRouter,
   WormRouter__factory,
   ERC20Mock__factory,
+  TokenBridgeHelpers__factory,
   IERC20__factory,
 } from "./ethers-contracts";
-
-import { IERC20Interface } from "./ethers-contracts/IERC20";
 
 import { ITokenBridge__factory } from "@certusone/wormhole-sdk/lib/cjs/ethers-contracts";
 import { IWormholeRelayer__factory } from "@certusone/wormhole-sdk/lib/cjs/ethers-contracts/factories/IWormholeRelayerTyped.sol";
@@ -154,9 +154,6 @@ describe("Worm Router Integration Tests on Testnet", () => {
 
       const walletTargetChainAddress = getWallet(targetChain).address;
 
-      const sourceWormRouterContract = getWormRouter(sourceChain);
-      const targetWormRouterContract = getWormRouter(targetChain);
-
       const walletOriginalBalanceOfWrappedTestToken =
         await wormholeWrappedTestTokenOnTargetChain.balanceOf(
           walletTargetChainAddress
@@ -211,11 +208,101 @@ describe("Worm Router Integration Tests on Testnet", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 1000 * 15));
 
-      /*
-        console.log("Checking relay status");
-        const res = await getStatus(CHAIN_ID_TO_NAME[sourceChain], tx.hash);
-        console.log(`Status: ${res.status}`);
-        console.log(`Info: ${res.info}`); */
+      console.log(`Seeing if token was sent`);
+      const walletCurrentBalanceOfWrappedTestToken =
+        await wormholeWrappedTestTokenOnTargetChain.balanceOf(
+          walletTargetChainAddress
+        );
+
+      expect(
+        walletCurrentBalanceOfWrappedTestToken
+          .sub(walletOriginalBalanceOfWrappedTestToken)
+          .toString()
+      ).toBe(arbitraryTokenAmount.toString());
+    },
+    60 * 1000
+  ); // timeout
+
+  test(
+    "Tests the sending of a token using the TokenBridgeHelper",
+    async () => {
+      // Token Bridge can only deal with 8 decimal places
+      // So we send a multiple of 10^10, since this MockToken has 18 decimal places
+      const arbitraryTokenAmount = ethers.BigNumber.from(
+        new Date().getTime() % 10 ** 7
+      ).mul(10 ** 10);
+
+      const testToken = ERC20Mock__factory.connect(
+        getDeployedAddresses().erc20s[sourceChain][0],
+        getWallet(sourceChain)
+      );
+
+      const wormholeWrappedTestTokenAddressOnTargetChain =
+        await ITokenBridge__factory.connect(
+          getChain(targetChain).tokenBridge,
+          getWallet(targetChain)
+        ).wrappedAsset(
+          sourceChain,
+          tryNativeToUint8Array(testToken.address, "ethereum")
+        );
+      const wormholeWrappedTestTokenOnTargetChain = ERC20Mock__factory.connect(
+        wormholeWrappedTestTokenAddressOnTargetChain,
+        getWallet(targetChain)
+      );
+
+      const walletTargetChainAddress = getWallet(targetChain).address;
+
+      const tokenBridgeHelperContract = getTokenBridgeHelpers(sourceChain);
+
+      const walletOriginalBalanceOfWrappedTestToken =
+        await wormholeWrappedTestTokenOnTargetChain.balanceOf(
+          walletTargetChainAddress
+        );
+
+      const cost = await tokenBridgeHelperContract.quoteTransferTokens(
+        targetChain
+      );
+
+      console.log(
+        `Cost of sending the tokens: ${ethers.utils.formatEther(
+          cost
+        )} testnet AVAX`
+      );
+
+      // Approve the TokenBridgeHelper contract to use 'arbitraryTokenAmount' of our test token
+
+      const approveTx = await testToken
+        .approve(tokenBridgeHelperContract.address, arbitraryTokenAmount)
+        .then(wait);
+      console.log(
+        `TokenBridgeHelpers contract approved to spend ${ethers.utils.formatEther(
+          arbitraryTokenAmount
+        )} of our test token`
+      );
+
+      console.log(
+        `Sending ${ethers.utils.formatEther(
+          arbitraryTokenAmount
+        )} of the test token`
+      );
+
+      const tx = await tokenBridgeHelperContract.transferTokens(
+        testToken.address,
+        arbitraryTokenAmount,
+        targetChain,
+        getWallet(targetChain).address,
+        CONTRACTS["TESTNET"][CHAIN_ID_TO_NAME[targetChain]].token_bridge,
+        getWormRouter(targetChain).address,
+        { value: cost }
+      );
+
+      console.log(`Transaction hash: ${tx.hash}`);
+      await tx.wait();
+      console.log(
+        `See transaction at: https://testnet.snowtrace.io/tx/${tx.hash}`
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 1000 * 15));
 
       console.log(`Seeing if token was sent`);
       const walletCurrentBalanceOfWrappedTestToken =
