@@ -9,14 +9,12 @@ import "wormhole-solidity-sdk/WormholeRelayerSDK.sol";
 contract WormRouterTest is WormholeRelayerBasicTest {
     event GreetingReceived(string greeting, uint16 senderChain, address sender);
 
-    WormRouter wormRouterSource;
     WormRouter wormRouterTarget;
     ERC20Mock public token;
     uint256 constant GAS_LIMIT = 150_000;
 
     function setUpSource() public override {
         token = createAndAttestToken(sourceChain);
-        wormRouterSource = new WormRouter(address(relayerSource), sourceChain);
     }
 
     function setUpTarget() public override {
