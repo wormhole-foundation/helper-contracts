@@ -17,13 +17,9 @@ contract WormRouter is IWormholeReceiver {
     IWormholeRelayer public immutable wormholeRelayer;
     uint16 public immutable chainId;
 
-    address owner;
-    mapping(uint16 => address) wormRouters;
-
     constructor(address _wormholeRelayer, uint16 _chainId) {
         wormholeRelayer = IWormholeRelayer(_wormholeRelayer);
         chainId = _chainId;
-        owner = msg.sender;
     }
 
     /**
