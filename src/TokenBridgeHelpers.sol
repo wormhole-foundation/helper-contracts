@@ -34,7 +34,7 @@ contract TokenBridgeHelpers {
         address recipient,
         address recipientChainTokenBridgeAddress,
         address recipientChainWormRouterAddress
-    ) public payable returns (uint64 transferSequence, uint64 deliverySequence) {
+    ) external payable returns (uint64 transferSequence, uint64 deliverySequence) {
         uint256 cost = quoteTransferTokens(recipientChain);
         require(msg.value == cost, "Incorrect msg.value");
 
@@ -81,7 +81,7 @@ contract TokenBridgeHelpers {
         uint16[] memory attestChains,
         address[] memory attestTokenBridgeAddresses,
         address[] memory attestWormRouterAddresses
-    ) public payable returns (uint64 attestSequence, uint64[] memory deliverySequences) {
+    ) external payable returns (uint64 attestSequence, uint64[] memory deliverySequences) {
 
         // Attest 'token' to the TokenBridge
         attestSequence = tokenBridge.attestToken{value: wormhole.messageFee()}(token, 0);

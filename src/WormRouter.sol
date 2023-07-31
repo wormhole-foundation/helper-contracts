@@ -37,7 +37,7 @@ contract WormRouter is IWormholeReceiver {
         bytes32 sourceAddress, // address that called 'sendPayloadToEvm' (either user or WormRouter)
         uint16 sourceChain,
         bytes32 // deliveryHash - this can be stored in a mapping deliveryHash => bool to prevent duplicate deliveries
-    ) public payable override {
+    ) external payable override {
         require(msg.sender == address(wormholeRelayer));
 
         address targetAddress;
